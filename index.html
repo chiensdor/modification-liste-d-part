@@ -1,0 +1,413 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8">
+<title>Nouvelle Application</title>
+
+<!-- Librairies -->
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Sortable/1.15.0/Sortable.min.js"></script>
+
+<style>
+body {
+    font-family: Arial;
+    padding: 20px;
+    background: #f2f2f2;
+}
+
+/* --- BANDEAU FFSLC --- */
+#header {
+    text-align: center;
+    padding: 20px 10px;
+    margin-bottom: 25px;
+    border-radius: 10px;
+    background: linear-gradient(90deg, #003f7f, #0059b3);
+    color: white;
+    box-shadow: 0 3px 8px rgba(0,0,0,0.25);
+}
+
+.ffslc-title {
+    font-size: 30px;
+    font-weight: bold;
+    letter-spacing: 2px;
+}
+
+.app-title {
+    font-size: 22px;
+    margin-top: 5px;
+    font-weight: bold;
+}
+
+.app-subtitle {
+    font-size: 14px;
+    opacity: 0.9;
+    margin-top: 3px;
+}
+
+.app-version {
+    font-size: 12px;
+    margin-top: 10px;
+    opacity: 0.8;
+}
+
+/* --- CADRE DE SAISIE --- */
+#cadre {
+    background: white;
+    padding: 20px;
+    border-radius: 10px;
+    border-left: 6px solid #003f7f;
+    box-shadow: 0 3px 8px rgba(0,0,0,0.15);
+    margin-bottom: 25px;
+}
+
+#cadre h3 {
+    margin-top: 0;
+    color: #003f7f;
+    font-size: 20px;
+    margin-bottom: 15px;
+}
+
+/* --- BOUTONS --- */
+button {
+    background: #003f7f;
+    color: white;
+    border: none;
+    padding: 10px 18px;
+    border-radius: 6px;
+    cursor: pointer;
+    margin-right: 10px;
+    font-size: 14px;
+    transition: 0.2s;
+}
+
+button:hover {
+    background: #0059b3;
+}
+
+button#btnPDF {
+    background: #c8102e;
+}
+
+button#btnPDF:hover {
+    background: #e01a3c;
+}
+
+/* --- TABLEAU --- */
+table { border-collapse: collapse; width: 100%; margin-top: 20px; background:white; }
+th, td { border: 1px solid #ccc; padding: 6px; }
+th { background: #e6e6e6; }
+
+/* Ligne sélectionnée */
+tr.selected {
+    background-color: #c7e7ff !important;
+}
+
+/* Colonnes figées */
+td:nth-child(1), th:nth-child(1) {
+    position: sticky;
+    left: 0;
+    background: #fff;
+    z-index: 5;
+}
+
+td:nth-child(2), th:nth-child(2) {
+    position: sticky;
+    left: 90px;
+    background: #fff;
+    z-index: 5;
+}
+
+td.fixed, th.fixed {
+    cursor: not-allowed;
+    background-color: #f7f7f7;
+}
+
+/* Correction import fichier */
+#inputExcel {
+    position: relative;
+    z-index: 10;
+}
+</style>
+</head>
+
+<body>
+
+<!-- BANDEAU FFSLC -->
+<div id="header">
+    <div class="ffslc-title">FFSLC</div>
+    <div class="app-title">APPLICATION MODIFICATION DE LA LISTE DE DÉPART</div>
+    <div class="app-subtitle">Gestion des concurrents</div>
+    <div class="app-version">Version 1.00 – © Robert AURAY</div>
+</div>
+
+<!-- CADRE DE SAISIE -->
+<div id="cadre">
+    <h3>📄 Fichier liste de départ à modifier</h3>
+
+    <div style="margin-bottom:15px;">
+        <label style="font-weight:bold; color:#003f7f;">Sélectionner un fichier Excel :</label><br>
+        <input type="file" id="inputExcel" accept=".xls,.xlsx,.csv" style="margin-top:8px;">
+    </div>
+
+    <button id="btnCharger">Importer fichier</button>
+
+    <br><br>
+
+    <select id="selectFeuille" style="display:none;"></select>
+    <button id="btnChargerFeuille" style="display:none;">Charger la feuille</button>
+
+    <br><br>
+
+    <button id="btnPDF">Exporter PDF</button>
+    <button id="btnExcel">Exporter Excel</button>
+    <button id="btnCSV">Exporter CSV</button>
+</div>
+
+<table id="tableData">
+    <thead></thead>
+    <tbody></tbody>
+</table>
+
+<script>
+/* === CODE JS FONCTIONNEL === */
+
+let data = [];
+let colonnes = [];
+let workbook = null;
+
+let baseDossard = 0;
+let baseHeure = 0;
+let offsets = [];
+
+let selectedUID = null;
+
+function hmsToMs(h) {
+    const p = h.split(":");
+    return (+p[0]) * 3600000 + (+p[1]) * 60000 + (+p[2]) * 1000;
+}
+
+function msToHMS(ms) {
+    let h = Math.floor(ms / 3600000);
+    let m = Math.floor((ms % 3600000) / 60000);
+    let s = Math.floor((ms % 60000) / 1000);
+    return String(h).padStart(2,"0") + ":" + String(m).padStart(2,"0") + ":" + String(s).padStart(2,"0");
+}
+
+document.getElementById("btnCharger").addEventListener("click", () => {
+    const fichier = document.getElementById("inputExcel").files[0];
+    if (!fichier) return alert("Sélectionne un fichier Excel.");
+
+    const reader = new FileReader();
+    reader.onload = e => {
+        workbook = XLSX.read(e.target.result, { type: "binary" });
+
+        const feuilles = workbook.SheetNames;
+
+        if (feuilles.length === 1) {
+            chargerFeuille(feuilles[0]);
+            return;
+        }
+
+        const select = document.getElementById("selectFeuille");
+        select.innerHTML = feuilles.map(f => `<option value="${f}">${f}</option>`).join("");
+        select.style.display = "inline-block";
+
+        const btn = document.getElementById("btnChargerFeuille");
+        btn.style.display = "inline-block";
+
+        btn.onclick = () => {
+            const feuilleChoisie = select.value;
+            chargerFeuille(feuilleChoisie);
+        };
+    };
+
+    reader.readAsBinaryString(fichier);
+});
+
+function chargerFeuille(nomFeuille) {
+    const ws = workbook.Sheets[nomFeuille];
+
+    data = XLSX.utils.sheet_to_json(ws, { defval: "" });
+
+    data = data.map((l, i) => ({ uid: crypto.randomUUID(), ...l }));
+
+    colonnes = Object.keys(data[0]).filter(c => c !== "uid");
+
+    colonnes = [
+        "dossard",
+        "heure_depart",
+        ...colonnes.filter(c => c !== "dossard" && c !== "heure_depart")
+    ];
+
+    baseDossard = parseInt(data[0].dossard);
+    baseHeure = hmsToMs(data[0].heure_depart);
+
+    offsets = [];
+
+    for (let i = 0; i < data.length; i++) {
+        let h = hmsToMs(data[i].heure_depart);
+        offsets.push(h - baseHeure);
+    }
+
+    afficherTableau();
+}
+
+function afficherTableau() {
+    const thead = document.querySelector("#tableData thead");
+    const tbody = document.querySelector("#tableData tbody");
+
+    thead.innerHTML = "<tr>" + colonnes.map((c, i) => {
+        let fixed = (i === 0 || i === 1) ? "class='fixed'" : "";
+        return `<th ${fixed}>${c}</th>`;
+    }).join("") + "</tr>";
+
+    tbody.innerHTML = data.map(ligne =>
+        `<tr data-uid="${ligne.uid}">` +
+        colonnes.map((c, i) => {
+            let fixed = (i === 0 || i === 1) ? "class='fixed'" : "";
+            return `<td ${fixed}>${ligne[c]}</td>`;
+        }).join("") +
+        `</tr>`
+    ).join("");
+
+    activerSelectionLigne();
+    activerDragDrop();
+}
+
+function activerSelectionLigne() {
+    document.querySelectorAll("#tableData tbody tr").forEach(tr => {
+
+        tr.querySelectorAll("td.fixed").forEach(td => {
+            td.addEventListener("mousedown", (e) => {
+                e.preventDefault();
+            });
+        });
+
+        tr.addEventListener("click", () => {
+            selectedUID = tr.getAttribute("data-uid");
+
+            document.querySelectorAll("#tableData tbody tr")
+                .forEach(l => l.classList.remove("selected"));
+
+            tr.classList.add("selected");
+        });
+    });
+}
+
+function activerDragDrop() {
+    new Sortable(document.querySelector("#tableData tbody"), {
+        animation: 150,
+        handle: "td:not(.fixed)",
+        onEnd: () => {
+
+            const lignes = [...document.querySelectorAll("#tableData tbody tr")];
+
+            data = lignes.map((tr, index) => {
+                const uid = tr.getAttribute("data-uid");
+                const cells = tr.querySelectorAll("td");
+
+                let obj = { uid };
+
+                colonnes.forEach((c, i) => obj[c] = cells[i].textContent);
+
+                obj.dossard = baseDossard + index;
+                obj.heure_depart = msToHMS(baseHeure + offsets[index]);
+
+                return obj;
+            });
+
+            afficherTableau();
+        }
+    });
+}
+
+document.getElementById("btnCSV").addEventListener("click", () => {
+    if (!data.length) return;
+
+    let csv = colonnes.join(";") + "\n";
+
+    data.forEach(ligne => {
+        csv += colonnes.map(c => ligne[c]).join(";") + "\n";
+    });
+
+    const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
+    const url = URL.createObjectURL(blob);
+
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = "export.csv";
+    a.click();
+});
+
+document.getElementById("btnPDF").addEventListener("click", () => {
+    if (!data || data.length === 0) {
+        alert("Aucune donnée à exporter.");
+        return;
+    }
+
+    const w = window.open("", "_blank");
+
+    let html = `
+    <html><head><title>Liste de départ – PDF</title>
+    <style>
+        body { font-family: Arial; padding: 20px; }
+        h1 { text-align: center; margin-bottom: 10px; color:#003f7f; }
+        h2 { text-align: center; margin-top: 0; color:#003f7f; }
+        p { text-align:center; font-size:12px; color:#444; margin:0; }
+        .ffslc { text-align:center; font-size:14px; font-weight:bold; color:#003f7f; margin-bottom:10px; }
+        table { width: 100%; border-collapse: collapse; margin-top: 15px; }
+        th, td { border: 1px solid #000; padding: 6px; font-size: 12px; }
+        th { background:#e6e6e6; }
+    </style></head><body>
+
+    <div class="ffslc">FFSLC</div>
+
+    <h1>LISTE DE DÉPART</h1>
+    <h2>Export généré automatiquement</h2>
+    <p>Créé par Robert AURAY</p>
+
+    <table>
+        <thead>
+            <tr>`;
+
+    colonnes.forEach(c => {
+        html += `<th>${c.replaceAll("_", " ").toUpperCase()}</th>`;
+    });
+
+    html += `
+            </tr>
+        </thead>
+        <tbody>`;
+
+    data.forEach(l => {
+        html += `<tr>`;
+        colonnes.forEach(c => {
+            html += `<td>${l[c] || ""}</td>`;
+        });
+        html += `</tr>`;
+    });
+
+    html += `
+        </tbody>
+    </table>
+
+    </body></html>`;
+
+    w.document.write(html);
+    w.document.close();
+    w.onload = () => w.print();
+});
+
+document.getElementById("btnExcel").addEventListener("click", () => {
+    if (!data.length) return;
+
+    const ws = XLSX.utils.json_to_sheet(data.map(({uid, ...rest}) => rest));
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, "Export");
+
+    XLSX.writeFile(wb, "export.xlsx");
+});
+</script>
+
+</body>
+</html>
