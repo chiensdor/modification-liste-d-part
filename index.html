@@ -15,6 +15,24 @@ body {
     background: #f2f2f2;
 }
 
+/* --- BOUTON RETOUR MENU --- */
+.retour-btn {
+    background: #003f7f;
+    color: white;
+    border: none;
+    padding: 10px 18px;
+    border-radius: 8px;
+    cursor: pointer;
+    font-size: 16px;
+    font-weight: bold;
+    margin-bottom: 20px;
+    transition: 0.2s;
+}
+
+.retour-btn:hover {
+    background: #0059b3;
+}
+
 /* --- BANDEAU FFSLC --- */
 #header {
     text-align: center;
@@ -131,7 +149,6 @@ td.fixed, th.fixed {
 </head>
 
 <body>
-
 <!-- BANDEAU FFSLC -->
 <div id="header">
     <div class="ffslc-title">FFSLC</div>
@@ -139,6 +156,12 @@ td.fixed, th.fixed {
     <div class="app-subtitle">Gestion des concurrents</div>
     <div class="app-version">Version 1.00 – © Robert AURAY</div>
 </div>
+
+<!-- BOUTON RETOUR MENU -->
+<button class="retour-btn" onclick="window.location.href='https://chiensdor.github.io/menu-application/'">
+    ⬅️ Retour au menu FFSLC
+</button>
+
 
 <!-- CADRE DE SAISIE -->
 <div id="cadre">
