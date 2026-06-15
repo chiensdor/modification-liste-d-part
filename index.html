@@ -149,19 +149,19 @@ td.fixed, th.fixed {
 </head>
 
 <body>
+
 <!-- BANDEAU FFSLC -->
 <div id="header">
     <div class="ffslc-title">FFSLC</div>
     <div class="app-title">APPLICATION MODIFICATION DE LA LISTE DE DÉPART</div>
     <div class="app-subtitle">Gestion des concurrents</div>
-    <div class="app-version">Version 1.00 – © Robert AURAY</div>
+    <div class="app-version">Version 2.00 – © Robert AURAY</div>
 </div>
 
 <!-- BOUTON RETOUR MENU -->
 <button class="retour-btn" onclick="window.location.href='https://chiensdor.github.io/menu-application/'">
     ⬅️ Retour au menu FFSLC
 </button>
-
 
 <!-- CADRE DE SAISIE -->
 <div id="cadre">
@@ -184,13 +184,19 @@ td.fixed, th.fixed {
     <button id="btnPDF">Exporter PDF</button>
     <button id="btnExcel">Exporter Excel</button>
     <button id="btnCSV">Exporter CSV</button>
+
+    <br><br>
+
+    <!-- 🔵 NOUVEAUX BOUTONS LISTE ALPHABÉTIQUE -->
+    <button id="btnAlphaPDF">Liste alphabétique PDF</button>
+    <button id="btnAlphaExcel">Liste alphabétique Excel</button>
+
 </div>
 
 <table id="tableData">
     <thead></thead>
     <tbody></tbody>
 </table>
-
 <script>
 /* === CODE JS FONCTIONNEL === */
 
@@ -204,11 +210,16 @@ let offsets = [];
 
 let selectedUID = null;
 
+/* 🔵 NOM DU FICHIER IMPORTÉ (pour nommer les exports) */
+let nomFichierImporte = "export";
+
+/* --- Conversion HH:MM:SS → millisecondes --- */
 function hmsToMs(h) {
     const p = h.split(":");
     return (+p[0]) * 3600000 + (+p[1]) * 60000 + (+p[2]) * 1000;
 }
 
+/* --- Conversion millisecondes → HH:MM:SS --- */
 function msToHMS(ms) {
     let h = Math.floor(ms / 3600000);
     let m = Math.floor((ms % 3600000) / 60000);
@@ -216,9 +227,13 @@ function msToHMS(ms) {
     return String(h).padStart(2,"0") + ":" + String(m).padStart(2,"0") + ":" + String(s).padStart(2,"0");
 }
 
+/* === IMPORT DU FICHIER EXCEL === */
 document.getElementById("btnCharger").addEventListener("click", () => {
     const fichier = document.getElementById("inputExcel").files[0];
     if (!fichier) return alert("Sélectionne un fichier Excel.");
+
+    /* 🔵 Récupération du nom du fichier sans extension */
+    nomFichierImporte = fichier.name.replace(/\.[^/.]+$/, "");
 
     const reader = new FileReader();
     reader.onload = e => {
@@ -247,13 +262,16 @@ document.getElementById("btnCharger").addEventListener("click", () => {
     reader.readAsBinaryString(fichier);
 });
 
+/* === CHARGEMENT D’UNE FEUILLE === */
 function chargerFeuille(nomFeuille) {
     const ws = workbook.Sheets[nomFeuille];
 
     data = XLSX.utils.sheet_to_json(ws, { defval: "" });
 
+    /* Ajout d’un UID unique pour chaque ligne */
     data = data.map((l, i) => ({ uid: crypto.randomUUID(), ...l }));
 
+    /* Colonnes dans l’ordre souhaité */
     colonnes = Object.keys(data[0]).filter(c => c !== "uid");
 
     colonnes = [
@@ -275,6 +293,7 @@ function chargerFeuille(nomFeuille) {
     afficherTableau();
 }
 
+/* === AFFICHAGE DU TABLEAU === */
 function afficherTableau() {
     const thead = document.querySelector("#tableData thead");
     const tbody = document.querySelector("#tableData tbody");
@@ -297,6 +316,7 @@ function afficherTableau() {
     activerDragDrop();
 }
 
+/* === SÉLECTION D’UNE LIGNE === */
 function activerSelectionLigne() {
     document.querySelectorAll("#tableData tbody tr").forEach(tr => {
 
@@ -316,7 +336,7 @@ function activerSelectionLigne() {
         });
     });
 }
-
+/* === DRAG & DROP POUR RÉORDONNER LES LIGNES === */
 function activerDragDrop() {
     new Sortable(document.querySelector("#tableData tbody"), {
         animation: 150,
@@ -344,6 +364,7 @@ function activerDragDrop() {
     });
 }
 
+/* === EXPORT CSV === */
 document.getElementById("btnCSV").addEventListener("click", () => {
     if (!data.length) return;
 
@@ -358,10 +379,14 @@ document.getElementById("btnCSV").addEventListener("click", () => {
 
     const a = document.createElement("a");
     a.href = url;
-    a.download = "export.csv";
+
+    /* 🔵 NOM DU FICHIER CSV */
+    a.download = nomFichierImporte + "_modifie.csv";
+
     a.click();
 });
 
+/* === EXPORT PDF === */
 document.getElementById("btnPDF").addEventListener("click", () => {
     if (!data || data.length === 0) {
         alert("Aucune donnée à exporter.");
@@ -418,9 +443,14 @@ document.getElementById("btnPDF").addEventListener("click", () => {
 
     w.document.write(html);
     w.document.close();
+
+    /* 🔵 NOM DU PDF */
+    w.document.title = nomFichierImporte + "_modifie.pdf";
+
     w.onload = () => w.print();
 });
 
+/* === EXPORT EXCEL === */
 document.getElementById("btnExcel").addEventListener("click", () => {
     if (!data.length) return;
 
@@ -428,8 +458,90 @@ document.getElementById("btnExcel").addEventListener("click", () => {
     const wb = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(wb, ws, "Export");
 
-    XLSX.writeFile(wb, "export.xlsx");
+    /* 🔵 NOM DU FICHIER EXCEL */
+    XLSX.writeFile(wb, nomFichierImporte + "_modifie.xlsx");
 });
+/* === LISTE ALPHABÉTIQUE (Nom → Prénom) === */
+function getListeAlphabetique() {
+    return data.map(l => ({
+        nom: l.nom || l.NOM || "",
+        prenom: l.prenom || l.PRENOM || l["prénom"] || "",
+        dossard: l.dossard,
+        discipline: l.discipline || l.DISCIPLINE || ""
+    })).sort((a, b) => {
+        const n = a.nom.localeCompare(b.nom, "fr", { sensitivity: "base" });
+        if (n !== 0) return n;
+        return a.prenom.localeCompare(b.prenom, "fr", { sensitivity: "base" });
+    });
+}
+
+/* === EXPORT PDF LISTE ALPHABÉTIQUE === */
+document.getElementById("btnAlphaPDF").addEventListener("click", () => {
+    const liste = getListeAlphabetique();
+    if (!liste.length) return alert("Aucune donnée.");
+
+    const w = window.open("", "_blank");
+
+    let html = `
+    <html><head><title>Liste alphabétique</title>
+    <style>
+        body { font-family: Arial; padding: 20px; }
+        h1 { text-align: center; color:#003f7f; }
+        table { width: 100%; border-collapse: collapse; margin-top: 15px; }
+        th, td { border: 1px solid #000; padding: 6px; font-size: 12px; }
+        th { background:#e6e6e6; }
+    </style></head><body>
+
+    <h1>Liste alphabétique – Remise des dossards</h1>
+
+    <table>
+        <thead>
+            <tr>
+                <th>NOM</th>
+                <th>PRÉNOM</th>
+                <th>DOSSARD</th>
+                <th>DISCIPLINE</th>
+            </tr>
+        </thead>
+        <tbody>`;
+
+    liste.forEach(l => {
+        html += `
+        <tr>
+            <td>${l.nom}</td>
+            <td>${l.prenom}</td>
+            <td>${l.dossard}</td>
+            <td>${l.discipline}</td>
+        </tr>`;
+    });
+
+    html += `
+        </tbody>
+    </table>
+    </body></html>`;
+
+    w.document.write(html);
+    w.document.close();
+
+    /* 🔵 NOM DU PDF */
+    w.document.title = nomFichierImporte + "_alphabetique.pdf";
+
+    w.onload = () => w.print();
+});
+
+/* === EXPORT EXCEL LISTE ALPHABÉTIQUE === */
+document.getElementById("btnAlphaExcel").addEventListener("click", () => {
+    const liste = getListeAlphabetique();
+    if (!liste.length) return alert("Aucune donnée.");
+
+    const ws = XLSX.utils.json_to_sheet(liste);
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, "Alphabetique");
+
+    /* 🔵 NOM DU FICHIER EXCEL */
+    XLSX.writeFile(wb, nomFichierImporte + "_alphabetique.xlsx");
+});
+
 </script>
 
 </body>
